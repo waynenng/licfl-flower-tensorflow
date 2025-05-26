@@ -7,6 +7,16 @@ from flwr.server.strategy import FedAvg
 from licfl.task import load_model
 
 
+def aggregate_accuracy(metrics):
+    total_examples = 0
+    total_accuracy = 0.0
+
+    for num_examples, metric_dict in metrics:
+        total_examples += num_examples
+        total_accuracy += num_examples * metric_dict["accuracy"]
+
+    return {"accuracy": total_accuracy / total_examples}
+
 def server_fn(context: Context):
     # Read from config
     num_rounds = context.run_config["num-server-rounds"]
@@ -20,6 +30,7 @@ def server_fn(context: Context):
         fraction_evaluate=1.0,
         min_available_clients=2,
         initial_parameters=parameters,
+        evaluate_metrics_aggregation_fn=aggregate_accuracy,
     )
     config = ServerConfig(num_rounds=num_rounds)
 
