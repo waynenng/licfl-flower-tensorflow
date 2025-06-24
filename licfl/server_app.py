@@ -22,6 +22,8 @@ from flwr.server.strategy import FedAvg, FedAdam, FedAdagrad, FedYogi
 from sklearn.cluster import KMeans
 from numpy.linalg import eig
 
+from flwr.common import EvaluateIns
+
 class LICFLStrategy(fl.server.strategy.Strategy):
     def __init__(
         self,
@@ -203,6 +205,26 @@ class LICFLStrategy(fl.server.strategy.Strategy):
             selected_strategy = "FedYogi"
 
         return selected_strategy
+
+    def configure_evaluate(self, rnd, parameters, client_manager):
+        """Broadcast global parameters for client‐side evaluation."""
+        eval_ins = EvaluateIns(parameters, {})
+        return [(client, eval_ins) for client in client_manager.all()]
+
+    def aggregate_evaluate(self, rnd, results, failures):
+        """Aggregate client evaluation losses into a single server metric."""
+        # results: List of (ClientProxy, EvaluateRes) tuples
+        if not results:
+            return None, {}
+        total_examples = sum(res.num_examples for _, res in results)
+        if total_examples == 0:
+            return None, {}
+        weighted_loss = sum(res.loss * res.num_examples for _, res in results) / total_examples
+        return weighted_loss, {}
+
+    def evaluate(self, parameters, config):
+        """No server‐side (held‐out) evaluation configured."""
+        return None
 
 def aggregate_metrics(metrics):
     total_examples = 0
