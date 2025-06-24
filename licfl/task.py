@@ -9,27 +9,65 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import (
+    LSTM,
+    RepeatVector,
+    Reshape,
+    Conv2D,
+    BatchNormalization,
+    Flatten,
+    Dense,
+)
+
 WINDOW_SIZE = 96  # e.g. last 96 timesteps per sample
 
 # Make TensorFlow log less verbose
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 
-def load_model():
-    # Define a simple CNN for CIFAR-10 and set Adam optimizer
-    model = keras.Sequential(
-        [
-            keras.Input(shape=(32, 32, 3)),
-            layers.Conv2D(32, kernel_size=(3, 3), activation="relu"),
-            layers.MaxPooling2D(pool_size=(2, 2)),
-            layers.Conv2D(64, kernel_size=(3, 3), activation="relu"),
-            layers.MaxPooling2D(pool_size=(2, 2)),
-            layers.Flatten(),
-            layers.Dropout(0.5),
-            layers.Dense(10, activation="softmax"),
-        ]
+def load_model(window_size: int, num_features: int):
+    model = Sequential()
+
+    # ─── Temporal (LSTM) ───────────────────────────────────────────────────────────
+    # Tweak: two stacked LSTM layers of 100 units each, tanh activation
+    model.add(LSTM(100, activation="tanh", input_shape=(window_size, num_features)))
+    model.add(RepeatVector(1))                # Tweak: sequence-to-one (forecast next step)
+    model.add(LSTM(100, activation="tanh"))
+
+    # ─── Spatial (CNN) ──────────────────────────────────────────────────────────────
+    # Tweak: reshape into “image” of shape (time, features, 1) for Conv2D
+    model.add(Reshape((window_size, num_features, 1)))
+
+    # conv1: 24 filters, kernel (4×1)
+    model.add(Conv2D(24, kernel_size=(4, 1), activation="relu"))
+    # conv2: 36 filters, kernel (11×1)
+    model.add(Conv2D(36, kernel_size=(11, 1), activation="relu"))
+    # conv3: 48 filters, kernel (3×1) + BatchNorm
+    model.add(Conv2D(48, kernel_size=(3, 1), activation="relu"))
+    model.add(BatchNormalization())
+    # conv4: 32 filters, kernel (3×1) + BatchNorm
+    model.add(Conv2D(32, kernel_size=(3, 1), activation="relu"))
+    model.add(BatchNormalization())
+
+    model.add(Flatten())
+
+    # ─── Dense Head ────────────────────────────────────────────────────────────────
+    # Tweak: three ReLU Dense layers (32→16→8) as in paper
+    model.add(Dense(32, activation="relu"))
+    model.add(Dense(16, activation="relu"))
+    model.add(Dense(8, activation="relu"))
+    # Final output: single unit, linear activation for regression
+    model.add(Dense(1, activation="linear"))
+
+    # ─── Compile for regression ────────────────────────────────────────────────────
+    # Tweak: MSE loss + MAE metric instead of classification losses/metrics
+    model.compile(
+        optimizer="adam",
+        loss="mse",
+        metrics=["mae"],
     )
-    model.compile("adam", "sparse_categorical_crossentropy", metrics=["accuracy"])
+
     return model
 
 
