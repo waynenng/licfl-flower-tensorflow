@@ -45,14 +45,30 @@ class LICFLStrategy(fl.server.strategy.Strategy):
 
         # Instantiate each optimizer strategy
         self.strategies: Dict[str, fl.server.strategy.Strategy] = {
-            "FedAvg":    FedAvg(fraction_fit, fraction_eval, min_available_clients,
-                                 initial_parameters=self.initial_parameters),
-            "FedAdam":   FedAdam(fraction_fit, fraction_eval, min_available_clients,
-                                 initial_parameters=self.initial_parameters),
-            "FedAdagrad":FedAdagrad(fraction_fit, fraction_eval, min_available_clients,
-                                    initial_parameters=self.initial_parameters),
-            "FedYogi":   FedYogi(fraction_fit, fraction_eval, min_available_clients,
-                                 initial_parameters=self.initial_parameters),
+            "FedAvg": FedAvg(
+                fraction_fit=fraction_fit,
+                fraction_eval=fraction_eval,
+                min_available_clients=min_available_clients,
+                initial_parameters=self.initial_parameters,
+            ),
+            "FedAdam": FedAdam(
+                fraction_fit=fraction_fit,
+                fraction_eval=fraction_eval,
+                min_available_clients=min_available_clients,
+                initial_parameters=self.initial_parameters,
+            ),
+            "FedAdagrad": FedAdagrad(
+                fraction_fit=fraction_fit,
+                fraction_eval=fraction_eval,
+                min_available_clients=min_available_clients,
+                initial_parameters=self.initial_parameters,
+            ),
+            "FedYogi": FedYogi(
+                fraction_fit=fraction_fit,
+                fraction_eval=fraction_eval,
+                min_available_clients=min_available_clients,
+                initial_parameters=self.initial_parameters,
+            ),
         }
 
         # Placeholders filled each round
