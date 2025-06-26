@@ -18,7 +18,8 @@ from flwr.common import (
     FitRes,
     Parameters,
 )
-from flwr.server.strategy import FedAvg, FedAdam, FedAdagrad, FedYogi
+from flwr.server.strategy import FedAvg
+from flwr.server.strategy.experimental import FedAdam, FedAdagrad, FedYogi
 from sklearn.cluster import KMeans
 from numpy.linalg import eig
 
