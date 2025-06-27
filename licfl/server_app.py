@@ -342,7 +342,7 @@ class LICFLStrategy(fl.server.strategy.Strategy):
 
         return selected_strategy
 
-    def configure_evaluate(self, rnd, parameters, client_manager):
+    def configure_evaluate(self, server_round, parameters, client_manager, **kwargs):
         """Broadcast global parameters for client‐side evaluation."""
         eval_ins = EvaluateIns(parameters, {})
         return [(client, eval_ins) for client in client_manager.all()]
