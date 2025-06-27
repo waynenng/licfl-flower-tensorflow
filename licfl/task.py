@@ -26,7 +26,7 @@ WINDOW_SIZE = 96  # e.g. last 96 timesteps per sample
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 
-def load_model(window_size: int, num_features: int):
+def load_model(window_size: int = WINDOW_SIZE, num_features: int = 1):
     model = Sequential()
 
     # ─── Temporal (LSTM) with full sequence output ─────────────────────────────────
