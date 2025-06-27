@@ -94,12 +94,12 @@ class LICFLStrategy(fl.server.strategy.Strategy):
     def initialize_parameters(self, client_manager):
         return self.initial_parameters
 
-    def configure_fit(self, rnd, parameters, client_manager):
+    def configure_fit(self, server_round, parameters, client_manager, **kwargs):
         """Broadcast parameters to each cohort (or all clients in round 1)."""
 
         clients = client_manager.all()
 
-        if rnd == 1:
+        if server_round == 1:
             # ── Round 1, Phase 1: everyone gets the GLOBAL parameters ──
             return [
                 (c, fl.common.FitIns(parameters, {}))
