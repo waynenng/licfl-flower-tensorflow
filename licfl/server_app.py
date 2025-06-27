@@ -76,6 +76,21 @@ class LICFLStrategy(fl.server.strategy.Strategy):
         self.cohorts: Dict[int, List[int]] = {}
         self.cohort_parameters: Dict[int, List[np.ndarray]] = {}
 
+        # ─── Algorithm 3 hyperparameters & state ────────────────────────────────────
+        # β₁, β₂ for momentum/variance updates, τ for numerical stability, η for step‐size
+        self.beta1 = 0.9
+        self.beta2 = 0.999
+        self.tau = 1e-9
+        self.eta = 1.0
+
+        # Per‐cohort Algorithm 3 state (populated in round 1)
+        #   theta_prev[j]: last selected flat vector for cohort j
+        #   m_prev[j]:      momentum accumulator for cohort j
+        #   v_prev[j]:      dict of per‐strategy variance accumulators for cohort j
+        self.theta_prev: Dict[int, np.ndarray] = {}
+        self.m_prev: Dict[int, np.ndarray] = {}
+        self.v_prev: Dict[int, Dict[str, np.ndarray]] = {}
+
     def initialize_parameters(self, client_manager):
         return self.initial_parameters
 
@@ -114,50 +129,48 @@ class LICFLStrategy(fl.server.strategy.Strategy):
             return None, {}
 
         # 1) Extract raw ndarrays and compute loss
-        client_ndarrays = [
-            parameters_to_ndarrays(res.parameters) for _, res in results
-        ]
+        client_ndarrays = [parameters_to_ndarrays(res.parameters) for _, res in results]
         losses = [res.metrics.get("loss", 0.0) for _, res in results]
         current_loss = float(np.mean(losses))
 
-        # 2) Adaptive‐strategy (you can keep this as is)
-        strategy_name = self.adaptive_strategy(rnd, self.previous_loss, current_loss)
-        optimizer = self.strategies[strategy_name]
-
-        # ───── Round 1: Two-Phase Update ─────
+        # ───── Round 1: Two-Phase Update with Algorithm 3 ─────
         if rnd == 1:
-            # Phase 1: clients update on GLOBAL Θ
-            # (results already contain these first updates → V)
+            # Phase 1: clients update on GLOBAL Θ (build V)
             self.V = client_ndarrays
 
-            # Build a “fake” FitRes list so we can call the aggregator A(V)
-            fake_phase1 = [
-                (
-                    None,
-                    FitRes(
-                        parameters=ndarrays_to_parameters(w),
-                        num_examples=1,
-                        metrics={},
-                    ),
-                )
-                for w in self.V
-            ]
-            global_params, _ = optimizer.aggregate_fit(rnd, fake_phase1, failures)
+            # Aggregate to get initial global model (can use FedAvg as a warm start)
+            fake_phase1 = [(
+                None,
+                FitRes(
+                    parameters=ndarrays_to_parameters(w),
+                    num_examples=1,
+                    metrics={},
+                ),
+            ) for w in self.V]
+            global_params, _ = self.strategies["FedAvg"].aggregate_fit(rnd, fake_phase1, failures)
             global_nds = parameters_to_ndarrays(global_params)
 
-            # Cohort assignment on V
+            # Cohort assignment
             self.cohorts = self.cohorting_algorithm(
                 self.V,
                 n_components=5,
                 n_clusters=self.num_cohorts,
             )
 
-            # Initialize every cohort’s model to the GLOBAL Θ
-            self.cohort_parameters = {
-                j: global_nds for j in self.cohorts
-            }
+            # Initialize Algorithm 3 state per cohort
+            flat_global = np.concatenate([w.flatten() for w in global_nds])
+            for j in self.cohorts:
+                self.theta_prev[j] = flat_global.copy()
+                self.m_prev[j] = np.zeros_like(flat_global)
+                self.v_prev[j] = {
+                    "FedAvg":     np.zeros_like(flat_global),
+                    "FedAdagrad": np.zeros_like(flat_global),
+                    "FedYogi":    np.zeros_like(flat_global),
+                    "FedAdam":    np.zeros_like(flat_global),
+                }
+            self.cohort_parameters = {j: global_nds for j in self.cohorts}
 
-            # Phase 2: ask each client to fit on its cohort’s Θʲ
+            # Phase 2: re-fit clients on their cohort models
             fit_ins = []
             for j, client_indices in self.cohorts.items():
                 ins_params = ndarrays_to_parameters(self.cohort_parameters[j])
@@ -175,72 +188,80 @@ class LICFLStrategy(fl.server.strategy.Strategy):
                             ),
                         )
                     )
-            # fire off the second wave of client‐updates
             results2 = self.client_manager.fit(fit_ins)
 
-            # 4) Per‐cohort aggregation on Phase-2 updates
+            # Per-cohort aggregation via Algorithm 3
             new_cohort_params = {}
+            shapes = [w.shape for w in self.cohort_parameters[next(iter(self.cohorts))]]
+            splits = np.cumsum([np.prod(s) for s in shapes])[:-1]
             for j, client_indices in self.cohorts.items():
-                # collect (ClientProxy, FitRes) for this cohort
-                cohort_res = [
-                    (cid, res)
-                    for cid, res in results2
-                    if cid in [results[i][0] for i in client_indices]
-                ]
-                params_cohort, _ = optimizer.aggregate_fit(rnd, cohort_res, failures)
-                new_cohort_params[j] = parameters_to_ndarrays(params_cohort)
+                # collect flat updates
+                cohort_updates = []
+                for cid, res in results2:
+                    if cid in [results[i][0] for i in client_indices]:
+                        nds = parameters_to_ndarrays(res.parameters)
+                        cohort_updates.append(np.concatenate([l.flatten() for l in nds]))
+                # Algorithm 3 selection
+                flat_new = self._algorithm3_aggregate(cohort_updates, j)
+                # un-flatten
+                layers = np.split(flat_new, splits)
+                new_cohort_params[j] = [l.reshape(s) for l, s in zip(layers, shapes)]
 
             self.cohort_parameters = new_cohort_params
 
-            # 5) (Optional) Global aggregation across cohorts to get Θ for next round
-            fake_phase2 = [
-                (
-                    None,
-                    FitRes(
-                        parameters=ndarrays_to_parameters(w),
-                        num_examples=1,
-                        metrics={},
-                    ),
-                )
-                for w in new_cohort_params.values()
-            ]
-            global_params_final, metrics = optimizer.aggregate_fit(
-                rnd, fake_phase2, failures
-            )
-
-            # 6) Save loss & return
-            self.previous_loss = current_loss
-            metrics["strategy"] = strategy_name
-            return global_params_final, metrics
-
-        # ───── Rounds ≥ 2: unchanged from your current logic ─────
-        # 4) Per‐cohort aggregation via chosen optimizer
-        new_cohort_params = {}
-        for cohort_idx, client_indices in self.cohorts.items():
-            cohort_results = [results[i] for i in client_indices]
-            params_cohort, _ = optimizer.aggregate_fit(rnd, cohort_results, failures)
-            new_cohort_params[cohort_idx] = parameters_to_ndarrays(params_cohort)
-        self.cohort_parameters = new_cohort_params
-
-        # 5) Global aggregation across cohorts (same as before)
-        fake_results = [
-            (
+            # Global aggregation across cohorts (warm start)
+            fake_phase2 = [(
                 None,
                 FitRes(
-                    parameters=ndarrays_to_parameters(nds),
+                    parameters=ndarrays_to_parameters(w),
                     num_examples=1,
                     metrics={},
                 ),
+            ) for w in new_cohort_params.values()]
+            global_params_final, metrics = self.strategies["FedAvg"].aggregate_fit(
+                rnd, fake_phase2, failures
             )
-            for nds in new_cohort_params.values()
-        ]
-        global_params, metrics = optimizer.aggregate_fit(rnd, fake_results, failures)
 
-        # 6) Update for next round
+            # Save state and return
+            self.previous_loss = current_loss
+            metrics["strategy"] = "Algorithm3"
+            return global_params_final, metrics
+
+        # ───── Rounds ≥ 2: Algorithm 3 per-cohort aggregation ─────
+        new_cohort_params = {}
+        shapes = [w.shape for w in self.cohort_parameters[next(iter(self.cohorts))]]
+        splits = np.cumsum([np.prod(s) for s in shapes])[:-1]
+        for j, client_indices in self.cohorts.items():
+            # flatten client updates
+            flat_updates = []
+            for i in client_indices:
+                _, res = results[i]
+                nds = parameters_to_ndarrays(res.parameters)
+                flat_updates.append(np.concatenate([l.flatten() for l in nds]))
+            # Algorithm 3 selection
+            flat_new = self._algorithm3_aggregate(flat_updates, j)
+            # un-flatten
+            layers = np.split(flat_new, splits)
+            new_cohort_params[j] = [l.reshape(s) for l, s in zip(layers, shapes)]
+
+        self.cohort_parameters = new_cohort_params
+
+        # Global aggregation across cohorts
+        fake_results = [(
+            None,
+            FitRes(
+                parameters=ndarrays_to_parameters(nds),
+                num_examples=1,
+                metrics={},
+            ),
+        ) for nds in new_cohort_params.values()]
+        global_params, metrics = self.strategies["FedAvg"].aggregate_fit(
+            rnd, fake_results, failures
+        )
+
+        # Update and return
         self.previous_loss = current_loss
-
-        # 7) Return
-        metrics["strategy"] = strategy_name
+        metrics["strategy"] = "Algorithm3"
         return global_params, metrics
 
     def cohorting_algorithm(self, client_parameters: List[List[np.ndarray]], n_components: int, n_clusters: int):
@@ -340,6 +361,64 @@ class LICFLStrategy(fl.server.strategy.Strategy):
     def evaluate(self, rnd, parameters, config):
       """No server-side (held-out) evaluation configured."""
       return None, {}
+    
+    def _algorithm3_aggregate(
+        self, flat_updates: List[np.ndarray], cohort_idx: int
+    ) -> np.ndarray:
+        """
+        Implements Algorithm 3 for one cohort:
+        - flat_updates: list of client weight-vectors, each flattened.
+        - cohort_idx: which cohort we’re updating.
+        Returns the selected new flat parameter‐vector.
+        """
+        prev = self.theta_prev[cohort_idx]
+        # Compute average “drift” Δₙ = (1/|C|) Σ (uₖ − prev)
+        deltas = [u - prev for u in flat_updates]
+        delta_avg = sum(deltas) / len(deltas)
+
+        # 1) m_r = β1 · m_{r-1} + (1−β1) · Δ
+        m_r = self.beta1 * self.m_prev[cohort_idx] + (1 - self.beta1) * delta_avg
+
+        # 2) v_r per‐strategy
+        v_r = {}
+        # FedAvg wipes out variance
+        v_r["FedAvg"] = np.zeros_like(delta_avg)
+        # FedAdagrad
+        v_r["FedAdagrad"] = (
+            self.v_prev[cohort_idx]["FedAdagrad"]
+            + np.square(delta_avg)
+        )
+        # FedYogi
+        diff = self.v_prev[cohort_idx]["FedYogi"] - np.square(delta_avg)
+        v_r["FedYogi"] = (
+            self.v_prev[cohort_idx]["FedYogi"]
+            - (1 - self.beta2) * np.square(delta_avg) * np.sign(diff)
+        )
+        # FedAdam
+        v_r["FedAdam"] = (
+            self.beta2 * self.v_prev[cohort_idx]["FedAdam"]
+            + (1 - self.beta2) * np.square(delta_avg)
+        )
+
+        # 3) Compute candidate thetas: Θₙ⁽c⁾ = prev + η · m_r / (√(v_r)+τ)
+        candidates: Dict[str, np.ndarray] = {}
+        for name, v_vec in v_r.items():
+            candidates[name] = prev + self.eta * m_r / (np.sqrt(v_vec) + self.tau)
+
+        # 4) Score by drift:  s_c = ‖Θₙ⁽c⁾‖_F − ‖prev‖_F, pick minimal
+        norm_prev = np.linalg.norm(prev)
+        scores = {
+            name: np.linalg.norm(theta_c) - norm_prev
+            for name, theta_c in candidates.items()
+        }
+        best = min(scores, key=scores.get)
+
+        # 5) Update stored state for next round
+        self.m_prev[cohort_idx]       = m_r
+        self.v_prev[cohort_idx]       = v_r
+        self.theta_prev[cohort_idx]   = candidates[best]
+
+        return candidates[best]
 
 def aggregate_metrics(metrics):
     total_examples = 0
