@@ -35,5 +35,8 @@ verbose = true
 [tool.flwr.federations]
 default = "local-simulation"
 
+[tool.hatch.build.targets.sdist]
+include = ["licfl/data/*.feather"]
+
 [tool.flwr.federations.local-simulation]
 options.num-supernodes = 10
