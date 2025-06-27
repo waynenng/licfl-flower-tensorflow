@@ -451,3 +451,7 @@ def server_fn(context):
     return ServerAppComponents(strategy=strategy, config=config)
 
 app = ServerApp(server_fn=server_fn)
+
+if __name__ == "__main__":
+    # When run as a script, start the server
+    app.run()

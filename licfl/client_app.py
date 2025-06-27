@@ -69,6 +69,8 @@ def client_fn(context: Context):
 
 
 # Flower ClientApp
-app = ClientApp(
-    client_fn=client_fn,
-)
+app = ClientApp(client_fn=client_fn)
+
+if __name__ == "__main__":
+    # When run as a script, start the client
+    app.run()
