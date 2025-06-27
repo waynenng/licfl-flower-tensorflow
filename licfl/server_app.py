@@ -358,9 +358,9 @@ class LICFLStrategy(fl.server.strategy.Strategy):
         weighted_loss = sum(res.loss * res.num_examples for _, res in results) / total_examples
         return weighted_loss, {}
 
-    def evaluate(self, rnd, parameters, config):
-      """No server-side (held-out) evaluation configured."""
-      return None, {}
+    def evaluate(self, rnd, parameters, config=None):
+         """No server-side (held-out) evaluation configured."""
+         return None, {}
     
     def _algorithm3_aggregate(
         self, flat_updates: List[np.ndarray], cohort_idx: int
