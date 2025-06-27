@@ -60,7 +60,7 @@ def client_fn(context: Context):
     data = load_data(partition_id, num_partitions)
     epochs = context.run_config["local-epochs"]
     batch_size = context.run_config["batch-size"]
-    verbose = context.run_config.get("verbose")
+    verbose = context.run_config.get("verbose", 0)
 
     # Return Client instance
     return FlowerClient(

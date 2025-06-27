@@ -1,7 +1,7 @@
 """LICFL: A Flower / TensorFlow app."""
 
 import os
-
+import pathlib
 import keras
 from keras import layers
 
@@ -79,7 +79,8 @@ fds = None  # Cache FederatedDataset
 
 def load_data(partition_id: int, num_partitions: int):
     # 1) Read the full ERCOT load time series
-    df = pd.read_feather("data/ercot-2021-load_profiles.feather")
+    data_path = pathlib.Path(__file__).parent / "data" / "ercot-2021-load_profiles.feather"
+    df = pd.read_feather(data_path)
     # Suppose df has columns: 'datetime', zone_0, zone_1, ..., zone_N
     # You could pick one zone or aggregate all zones:
     data = df.mean(axis=1).values
