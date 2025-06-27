@@ -78,25 +78,47 @@ fds = None  # Cache FederatedDataset
 
 
 def load_data(partition_id: int, num_partitions: int):
-    # 1) Read the full ERCOT load time series
-    base = pathlib.Path(__file__).parent.parent  # one level up from licfl/
-    data_path = base / "ercot-2021-load_profiles.feather"
-    df = pd.read_feather(data_path)
-    # Suppose df has columns: 'datetime', zone_0, zone_1, ..., zone_N
-    # You could pick one zone or aggregate all zones:
-    data = df.mean(axis=1).values
+    # ─── 1) Locate the Feather file ────────────────────────────────
+    pkg_data   = pathlib.Path(__file__).parent / "data" / "ercot-2021-load_profiles.feather"
+    proj_data  = pathlib.Path.cwd() / "data" / "ercot-2021-load_profiles.feather"
+    root_file  = pathlib.Path(__file__).parent.parent / "ercot-2021-load_profiles.feather"
 
-    # 2) Convert to sliding windows
-    X = []
-    y = []
+    data_path = None
+    for candidate in (pkg_data, proj_data, root_file):
+        print(f"[load_data] Checking {candidate!s} → exists? {candidate.exists()}")
+        if candidate.exists():
+            data_path = candidate
+            break
+
+    if data_path is None:
+        raise FileNotFoundError(
+            "Could not find ercot-2021-load_profiles.feather in any of:\n"
+            f"  • {pkg_data}\n"
+            f"  • {proj_data}\n"
+            f"  • {root_file}"
+        )
+
+    # ─── 2) Load into a DataFrame ────────────────────────────────────
+    try:
+        df = pd.read_feather(data_path)
+    except Exception:
+        print(f"[load_data] Failed to read {data_path!s}:")
+        traceback.print_exc()
+        raise
+
+    # ─── 3) Aggregate across all numeric zones ───────────────────────
+    #    (Assumes datetime is non‐numeric; we drop it automatically.)
+    data = df.select_dtypes(include=[np.number]).mean(axis=1).values
+
+    # ─── 4) Build sliding windows ───────────────────────────────────
+    X, y = [], []
     for i in range(len(data) - WINDOW_SIZE):
         X.append(data[i : i + WINDOW_SIZE])
         y.append(data[i + WINDOW_SIZE])
-    X = np.array(X)[..., np.newaxis]  # shape (num_samples, WINDOW_SIZE, 1)
+    X = np.array(X)[..., np.newaxis]  # shape: (num_samples, WINDOW_SIZE, 1)
     y = np.array(y)
 
-    # 3) Partition samples across clients
-    #    Simple IID split by index:
+    # ─── 5) Simple IID partition across clients ──────────────────────
     indices = np.arange(len(X))
     np.random.shuffle(indices)
     parts = np.array_split(indices, num_partitions)
@@ -105,7 +127,7 @@ def load_data(partition_id: int, num_partitions: int):
     X_client = X[client_idx]
     y_client = y[client_idx]
 
-    # 4) Train/test split
+    # ─── 6) Train/Test split ─────────────────────────────────────────
     X_train, X_test, y_train, y_test = train_test_split(
         X_client, y_client, test_size=0.2, random_state=42
     )
