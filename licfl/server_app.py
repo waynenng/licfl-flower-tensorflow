@@ -81,69 +81,167 @@ class LICFLStrategy(fl.server.strategy.Strategy):
 
     def configure_fit(self, rnd, parameters, client_manager):
         """Broadcast parameters to each cohort (or all clients in round 1)."""
+
         clients = client_manager.all()
-        instructions = []
 
         if rnd == 1:
-            # Round 1: everyone gets global parameters
-            for c in clients:
-                instructions.append((c, fl.common.FitIns(parameters, {})))
-        else:
-            # Subsequent rounds: each cohort gets its own parameters
-            for cohort_idx, client_indices in self.cohorts.items():
-                cohort_params = ndarrays_to_parameters(self.cohort_parameters[cohort_idx])
-                for idx in client_indices:
-                    c = clients[idx]
-                    instructions.append((c, fl.common.FitIns(cohort_params, {})))
+            # ── Round 1, Phase 1: everyone gets the GLOBAL parameters ──
+            return [
+                (c, fl.common.FitIns(parameters, {}))
+                for c in clients
+            ]
+
+        # ── Round 2 and beyond (including Round 1, Phase 2 run inside aggregate_fit) ──
+        instructions = []
+        for cohort_idx, client_indices in self.cohorts.items():
+            # Convert your stored numpy arrays back into Flower Parameters
+            cohort_params = ndarrays_to_parameters(
+                self.cohort_parameters[cohort_idx]
+            )
+            for idx in client_indices:
+                instructions.append(
+                    (clients[idx], fl.common.FitIns(cohort_params, {}))
+                )
         return instructions
 
     def aggregate_fit(
-        self, rnd: int,
+        self,
+        rnd: int,
         results: List[Tuple[fl.server.client_proxy.ClientProxy, FitRes]],
         failures,
     ) -> Tuple[Parameters, Dict[str, Any]]:
         if not results:
             return None, {}
 
-        # 1) Extract raw ndarrays and losses
-        client_ndarrays = [parameters_to_ndarrays(res.parameters) for _, res in results]
+        # 1) Extract raw ndarrays and compute loss
+        client_ndarrays = [
+            parameters_to_ndarrays(res.parameters) for _, res in results
+        ]
         losses = [res.metrics.get("loss", 0.0) for _, res in results]
         current_loss = float(np.mean(losses))
 
-        # 2) Choose optimizer
+        # 2) Adaptive‐strategy (you can keep this as is)
         strategy_name = self.adaptive_strategy(rnd, self.previous_loss, current_loss)
         optimizer = self.strategies[strategy_name]
 
-        # 3) Cohort formation (round 1 uses Algorithm 2; else reuse)
+        # ───── Round 1: Two-Phase Update ─────
         if rnd == 1:
+            # Phase 1: clients update on GLOBAL Θ
+            # (results already contain these first updates → V)
+            self.V = client_ndarrays
+
+            # Build a “fake” FitRes list so we can call the aggregator A(V)
+            fake_phase1 = [
+                (
+                    None,
+                    FitRes(
+                        parameters=ndarrays_to_parameters(w),
+                        num_examples=1,
+                        metrics={},
+                    ),
+                )
+                for w in self.V
+            ]
+            global_params, _ = optimizer.aggregate_fit(rnd, fake_phase1, failures)
+            global_nds = parameters_to_ndarrays(global_params)
+
+            # Cohort assignment on V
             self.cohorts = self.cohorting_algorithm(
-                client_ndarrays, n_components=5, n_clusters=self.num_cohorts
+                self.V,
+                n_components=5,
+                n_clusters=self.num_cohorts,
             )
 
-        # 4) Per-cohort aggregation via chosen optimizer
+            # Initialize every cohort’s model to the GLOBAL Θ
+            self.cohort_parameters = {
+                j: global_nds for j in self.cohorts
+            }
+
+            # Phase 2: ask each client to fit on its cohort’s Θʲ
+            fit_ins = []
+            for j, client_indices in self.cohorts.items():
+                ins_params = ndarrays_to_parameters(self.cohort_parameters[j])
+                for idx in client_indices:
+                    client_proxy, _ = results[idx]
+                    fit_ins.append(
+                        (
+                            client_proxy,
+                            FitIns(
+                                parameters=ins_params,
+                                config={
+                                    "epochs": self.local_epochs,
+                                    "batch_size": self.batch_size,
+                                },
+                            ),
+                        )
+                    )
+            # fire off the second wave of client‐updates
+            results2 = self.client_manager.fit(fit_ins)
+
+            # 4) Per‐cohort aggregation on Phase-2 updates
+            new_cohort_params = {}
+            for j, client_indices in self.cohorts.items():
+                # collect (ClientProxy, FitRes) for this cohort
+                cohort_res = [
+                    (cid, res)
+                    for cid, res in results2
+                    if cid in [results[i][0] for i in client_indices]
+                ]
+                params_cohort, _ = optimizer.aggregate_fit(rnd, cohort_res, failures)
+                new_cohort_params[j] = parameters_to_ndarrays(params_cohort)
+
+            self.cohort_parameters = new_cohort_params
+
+            # 5) (Optional) Global aggregation across cohorts to get Θ for next round
+            fake_phase2 = [
+                (
+                    None,
+                    FitRes(
+                        parameters=ndarrays_to_parameters(w),
+                        num_examples=1,
+                        metrics={},
+                    ),
+                )
+                for w in new_cohort_params.values()
+            ]
+            global_params_final, metrics = optimizer.aggregate_fit(
+                rnd, fake_phase2, failures
+            )
+
+            # 6) Save loss & return
+            self.previous_loss = current_loss
+            metrics["strategy"] = strategy_name
+            return global_params_final, metrics
+
+        # ───── Rounds ≥ 2: unchanged from your current logic ─────
+        # 4) Per‐cohort aggregation via chosen optimizer
         new_cohort_params = {}
         for cohort_idx, client_indices in self.cohorts.items():
             cohort_results = [results[i] for i in client_indices]
-            # Delegate to underlying strategy’s aggregate_fit
             params_cohort, _ = optimizer.aggregate_fit(rnd, cohort_results, failures)
             new_cohort_params[cohort_idx] = parameters_to_ndarrays(params_cohort)
-
         self.cohort_parameters = new_cohort_params
 
-        # 5) Global aggregation across cohorts
-        # Build fake FitRes list from cohort aggregates
-        fake_results = []
-        for cohort_idx, nds in new_cohort_params.items():
-            fake_parameters = ndarrays_to_parameters(nds)
-            fake_results.append(
-                (None, FitRes(parameters=fake_parameters, num_examples=1, metrics={}))
+        # 5) Global aggregation across cohorts (same as before)
+        fake_results = [
+            (
+                None,
+                FitRes(
+                    parameters=ndarrays_to_parameters(nds),
+                    num_examples=1,
+                    metrics={},
+                ),
             )
+            for nds in new_cohort_params.values()
+        ]
         global_params, metrics = optimizer.aggregate_fit(rnd, fake_results, failures)
 
         # 6) Update for next round
         self.previous_loss = current_loss
 
-        return global_params, {**metrics, "strategy": strategy_name}
+        # 7) Return
+        metrics["strategy"] = strategy_name
+        return global_params, metrics
 
     def cohorting_algorithm(self, client_parameters: List[List[np.ndarray]], n_components: int, n_clusters: int):
         # Step 1: Flatten parameters for each client
