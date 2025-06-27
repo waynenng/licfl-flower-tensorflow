@@ -78,14 +78,14 @@ fds = None  # Cache FederatedDataset
 
 
 def load_data(partition_id: int, num_partitions: int):
-    # ─── 1) Locate the Feather file ────────────────────────────────
-    pkg_data   = pathlib.Path(__file__).parent / "data" / "ercot-2021-load_profiles.feather"
-    proj_data  = pathlib.Path.cwd() / "data" / "ercot-2021-load_profiles.feather"
-    root_file  = pathlib.Path(__file__).parent.parent / "ercot-2021-load_profiles.feather"
+    # ─── 1) Discover the Feather file ────────────────────────────────
+    pkg_data  = pathlib.Path(__file__).parent / "data" / "ercot-2021-load_profiles.feather"
+    proj_data = pathlib.Path.cwd() / "data" / "ercot-2021-load_profiles.feather"
+    root_file = pathlib.Path(__file__).parent.parent / "ercot-2021-load_profiles.feather"
 
     data_path = None
     for candidate in (pkg_data, proj_data, root_file):
-        print(f"[load_data] Checking {candidate!s} → exists? {candidate.exists()}")
+        print(f"[load_data] Checking {candidate} → exists? {candidate.exists()}")
         if candidate.exists():
             data_path = candidate
             break
@@ -98,27 +98,26 @@ def load_data(partition_id: int, num_partitions: int):
             f"  • {root_file}"
         )
 
-    # ─── 2) Load into a DataFrame ────────────────────────────────────
+    # ─── 2) Load into DataFrame ───────────────────────────────────────
     try:
         df = pd.read_feather(data_path)
     except Exception:
-        print(f"[load_data] Failed to read {data_path!s}:")
+        print(f"[load_data] Failed to read {data_path}:")
         traceback.print_exc()
         raise
 
-    # ─── 3) Aggregate across all numeric zones ───────────────────────
-    #    (Assumes datetime is non‐numeric; we drop it automatically.)
+    # ─── 3) Aggregate numeric columns (drop datetime automatically) ────
     data = df.select_dtypes(include=[np.number]).mean(axis=1).values
 
-    # ─── 4) Build sliding windows ───────────────────────────────────
+    # ─── 4) Build sliding windows ────────────────────────────────────
     X, y = [], []
     for i in range(len(data) - WINDOW_SIZE):
         X.append(data[i : i + WINDOW_SIZE])
         y.append(data[i + WINDOW_SIZE])
-    X = np.array(X)[..., np.newaxis]  # shape: (num_samples, WINDOW_SIZE, 1)
+    X = np.array(X)[..., np.newaxis]    # shape: (samples, WINDOW_SIZE, 1)
     y = np.array(y)
 
-    # ─── 5) Simple IID partition across clients ──────────────────────
+    # ─── 5) IID partition across clients ─────────────────────────────
     indices = np.arange(len(X))
     np.random.shuffle(indices)
     parts = np.array_split(indices, num_partitions)
