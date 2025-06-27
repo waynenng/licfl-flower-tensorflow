@@ -52,17 +52,33 @@ class FlowerClient(NumPyClient):
 
 
 def client_fn(context: Context):
-    # Load model and data
-    net = load_model()
+    # 1) Load model, but print full traceback on error
+    try:
+        net = load_model()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        # re‐raise so Flower still knows this client failed
+        raise
 
+    # 2) Determine partitioning params
     partition_id = context.node_config.get("partition-id", 0)
     num_partitions = context.node_config.get("num-partitions", 1)
-    data = load_data(partition_id, num_partitions)
-    epochs = context.run_config["local-epochs"]
-    batch_size = context.run_config["batch-size"]
-    verbose = context.run_config.get("verbose", 0)
 
-    # Return Client instance
+    # 3) Load data, but print full traceback on error
+    try:
+        data = load_data(partition_id, num_partitions)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        raise
+
+    # 4) Pull hyperparams (with sane defaults)
+    epochs     = context.run_config.get("local-epochs", 1)
+    batch_size = context.run_config.get("batch-size",   32)
+    verbose    = context.run_config.get("verbose",      0)
+
+    # 5) Return the Flower client
     return FlowerClient(
         net, data, epochs, batch_size, verbose
     ).to_client()
