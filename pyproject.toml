@@ -17,6 +17,7 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
+include = ["licfl/data/*.feather"]
 packages = ["."]
 
 [tool.flwr.app]
