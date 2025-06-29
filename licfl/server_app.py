@@ -34,12 +34,16 @@ class LICFLStrategy(fl.server.strategy.Strategy):
         fraction_fit: float = 1.0,
         fraction_eval: float = 1.0,
         min_available_clients: int = 2,
+        local_epochs: int = 1,      
+        batch_size: int = 32,
     ):
         # Base model + cohorts config
         self.model = model
         self.num_cohorts = num_cohorts
         self.threshold_improvement = threshold_improvement
         self.previous_loss = float("inf")
+        self.local_epochs = local_epochs    # ADD THIS
+        self.batch_size = batch_size
 
         # Initial parameters
         self.initial_parameters = ndarrays_to_parameters(model.get_weights())
@@ -445,7 +449,15 @@ def server_fn(context):
     num_rounds = context.run_config["num-server-rounds"]
     model = load_model(window_size=96, num_features=1)
 
-    strategy = LICFLStrategy(model=model, num_cohorts=3)
+    local_epochs = context.run_config.get("local-epochs", 1)
+    batch_size = context.run_config.get("batch-size", 32)
+
+    strategy = LICFLStrategy(
+        model=model, 
+        num_cohorts=3,
+        local_epochs=local_epochs,
+        batch_size=batch_size
+        )
 
     config = ServerConfig(num_rounds=num_rounds)
     return ServerAppComponents(strategy=strategy, config=config)
