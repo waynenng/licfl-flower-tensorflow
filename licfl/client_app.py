@@ -1,9 +1,13 @@
 """LICFL: A Flower / TensorFlow app."""
 
+import inspect
 from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context
-
 from licfl.task import load_data, load_model
+
+# Debug: confirm we’re pulling in the right functions
+print(f"[client_app] load_data  from: {inspect.getsourcefile(load_data)}")
+print(f"[client_app] load_model from: {inspect.getsourcefile(load_model)}")
 
 import time
 import numpy as np
@@ -19,9 +23,7 @@ from sklearn.metrics import (
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
-    def __init__(
-        self, model, data, epochs, batch_size, verbose
-    ):
+    def __init__(self, model, data, epochs, batch_size, verbose):
         self.model = model
         self.x_train, self.y_train, self.x_test, self.y_test = data
         self.epochs = epochs
@@ -43,31 +45,31 @@ class FlowerClient(NumPyClient):
         # Load weights
         self.model.set_weights(parameters)
 
-        # Direct regression eval: returns [mse, mae] since you compiled with loss="mse", metrics=["mae"]
+        # Direct regression eval
         loss, mae = self.model.evaluate(self.x_test, self.y_test, verbose=0)
-
-        # Return loss for strategy, plus mae as a metric
         return loss, len(self.x_test), {"loss": loss, "mae": mae}
 
 
 
 def client_fn(context: Context):
-    # 1) Load model, but print full traceback on error
+    # 1) Load model, with full traceback on error
     try:
         net = load_model()
     except Exception:
         import traceback
         traceback.print_exc()
-        # re‐raise so Flower still knows this client failed
         raise
 
     # 2) Determine partitioning params
     partition_id = context.node_config.get("partition-id", 0)
     num_partitions = context.node_config.get("num-partitions", 1)
 
-    # 3) Load data, but print full traceback on error
+    # 3) Load data with debug prints
     try:
+        print(f"[client_fn] ➡ calling load_data(partition_id={partition_id}, num_partitions={num_partitions})")
         data = load_data(partition_id, num_partitions)
+        X_tr, y_tr, X_te, y_te = data
+        print(f"[client_fn] ✅ shapes: X_tr={X_tr.shape}, y_tr={y_tr.shape}, X_te={X_te.shape}, y_te={y_te.shape}")
     except Exception:
         import traceback
         traceback.print_exc()
@@ -88,5 +90,4 @@ def client_fn(context: Context):
 app = ClientApp(client_fn=client_fn)
 
 if __name__ == "__main__":
-    # When run as a script, start the client
     app.run()
