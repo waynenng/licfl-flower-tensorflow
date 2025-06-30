@@ -9,16 +9,7 @@ from licfl.task import load_data, load_model
 print(f"[client_app] load_data  from: {inspect.getsourcefile(load_data)}")
 print(f"[client_app] load_model from: {inspect.getsourcefile(load_model)}")
 
-import time
-import numpy as np
-from sklearn.metrics import (
-    recall_score,
-    f1_score,
-    roc_auc_score,
-    mean_absolute_error,
-    mean_squared_error,
-    mean_absolute_percentage_error,
-)
+
 
 from typing import Dict, Any, List, Tuple
 import numpy as np
@@ -67,21 +58,27 @@ class FlowerClient(flwr.client.NumPyClient):
         return self.model.get_weights(), len(self.x_train), {}
 
     def evaluate(
-        self, 
-        parameters: Any, 
+        self,
+        parameters: Any,
         config: Dict[str, Any]
     ) -> Tuple[float, int, Dict[str, float]]:
-        # Same conversion dance
+        # 1) Convert from Parameters proto if needed
+        from flwr.common import parameters_to_ndarrays
         if not isinstance(parameters, list):
             parameters = parameters_to_ndarrays(parameters)
+
+        # 2) Load the global weights into the local model
         self.model.set_weights(parameters)
 
-        loss, accuracy = self.model.evaluate(
-            self.x_test, 
-            self.y_test, 
+        # 3) Run evaluation; note we return MAE rather than “accuracy”
+        loss, mae = self.model.evaluate(
+            self.x_test,
+            self.y_test,
             verbose=self.verbose
         )
-        return float(loss), len(self.x_test), {"accuracy": float(accuracy)}
+
+        # 4) Return (loss, num_samples, metrics)
+        return float(loss), len(self.x_test), {"mae": float(mae)}
 
 
 
