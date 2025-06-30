@@ -134,17 +134,36 @@ class LICFLStrategy(fl.server.strategy.Strategy):
             # Phase 1: clients update on GLOBAL Θ (build V)
             self.V = client_ndarrays
 
-            # Aggregate to get initial global model (can use FedAvg as a warm start)
-            fake_phase1 = [(
-                None,
-                FitRes(
-                    parameters=ndarrays_to_parameters(w),
-                    num_examples=1,
-                    metrics={},
-                ),
-            ) for w in self.V]
-            global_params, _ = self.strategies["FedAvg"].aggregate_fit(rnd, fake_phase1, failures)
-            global_nds = parameters_to_ndarrays(global_params)
+            # ─── Warm‐start global via **Algorithm 3** ───
+            # flatten each client‐update into a single vector:
+            flat_updates = [
+               np.concatenate([layer.flatten() for layer in client_params])
+               for client_params in self.V
+            ]
+    
+            # initialize “global” Algorithm 3 state on index -1 (once)
+            if -1 not in self.theta_prev:
+                # flatten your initial model Θ₀
+                flat_init = np.concatenate([
+                   layer.flatten()
+                   for layer in parameters_to_ndarrays(self.initial_parameters)
+                ])
+                self.theta_prev[-1] = flat_init.copy()
+                self.m_prev[-1]     = np.zeros_like(flat_init)
+                self.v_prev[-1]     = {
+                   name: np.zeros_like(flat_init)
+                   for name in ("FedAvg", "FedAdagrad", "FedYogi", "FedAdam")
+                }
+    
+            # run adaptive‐strategy selection on the whole V
+            flat_global = self._algorithm3_aggregate(flat_updates, -1)
+    
+            # un‐flatten back into the original layer shapes
+            shapes = [w.shape for w in parameters_to_ndarrays(self.initial_parameters)]
+            splits = np.cumsum([np.prod(s) for s in shapes])[:-1]
+            layers = np.split(flat_global, splits)
+            global_nds = [l.reshape(s) for l, s in zip(layers, shapes)]
+            global_params = ndarrays_to_parameters(global_nds)
 
             # Cohort assignment
             self.cohorts = self.cohorting_algorithm(
