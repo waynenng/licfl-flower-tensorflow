@@ -2,13 +2,10 @@
 
 from sklearn.cluster import KMeans
 from numpy.linalg import eig
-
-from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
-
+from flwr.server.strategy import FedAdam, FedAdagrad, FedYogi
 from licfl.task import load_model
-
 from typing import List, Tuple, Dict, Any
 import flwr as fl
 import numpy as np
@@ -17,13 +14,8 @@ from flwr.common import (
     parameters_to_ndarrays,
     FitRes,
     Parameters,
+    EvaluateIns
 )
-from flwr.server.strategy import FedAvg
-from flwr.server.strategy import FedAdam, FedAdagrad, FedYogi
-from sklearn.cluster import KMeans
-from numpy.linalg import eig
-
-from flwr.common import EvaluateIns
 
 class LICFLStrategy(fl.server.strategy.Strategy):
     def __init__(
@@ -423,27 +415,6 @@ class LICFLStrategy(fl.server.strategy.Strategy):
         self.theta_prev[cohort_idx]   = candidates[best]
 
         return candidates[best]
-
-def aggregate_metrics(metrics):
-    total_examples = 0
-    summed_metrics = {
-        "accuracy": 0.0, "recall": 0.0, "f1": 0.0, "auc": 0.0,
-        "parameters": 0.0, "flops": 0.0, "inference_time": 0.0, "training_time": 0.0,
-        "mae": 0.0, "mape": 0.0, "rmse": 0.0, "mse": 0.0,
-    }
-
-    for num_examples, metric_dict in metrics:
-        total_examples += num_examples
-        for k in summed_metrics.keys():
-            if k in metric_dict:
-                summed_metrics[k] += num_examples * metric_dict[k]
-
-    averaged_metrics = {k: v / total_examples for k, v in summed_metrics.items()}
-    return averaged_metrics
-
-from flwr.server import ServerApp, ServerConfig, ServerAppComponents
-from licfl.task import load_model
-
 
 def server_fn(context):
     num_rounds = context.run_config["num-server-rounds"]
