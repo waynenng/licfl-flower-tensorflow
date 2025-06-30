@@ -20,9 +20,13 @@ from sklearn.metrics import (
     mean_absolute_percentage_error,
 )
 
+from typing import Dict, Any, List, Tuple
+import numpy as np
+import flwr
+from flwr.common import parameters_to_ndarrays  # for real runs
 
 # Define Flower Client and client_fn
-class FlowerClient(NumPyClient):
+class FlowerClient(flwr.client.NumPyClient):
     def __init__(self, model, data, epochs, batch_size, verbose):
         self.model = model
         self.x_train, self.y_train, self.x_test, self.y_test = data
@@ -30,26 +34,54 @@ class FlowerClient(NumPyClient):
         self.batch_size = batch_size
         self.verbose = verbose
 
-    def fit(self, parameters, config):
+    def get_parameters(self, config: Dict[str, Any]) -> List[np.ndarray]:
+        # Always return a plain list of ndarrays
+        return self.model.get_weights()
+
+    def fit(
+        self, 
+        parameters: Any, 
+        config: Dict[str, Any]
+    ) -> Tuple[List[np.ndarray], int, Dict[str, float]]:
+        # 1) Convert if Flower passed a Parameters proto
+        if not isinstance(parameters, list):
+            parameters = parameters_to_ndarrays(parameters)
+
+        # 2) (Optional) debug shapes
+        print(">>> fit: incoming shapes:", [p.shape for p in parameters])
+        print(">>> fit: model needs shapes:", [w.shape for w in self.model.get_weights()])
+
+        # 3) Load the global weights into our local model
         self.model.set_weights(parameters)
-        history = self.model.fit(
+
+        # 4) Train
+        self.model.fit(
             self.x_train,
             self.y_train,
-            epochs=self.epochs,
-            batch_size=self.batch_size,
+            epochs=config.get("local_epochs", self.epochs),
+            batch_size=config.get("batch_size", self.batch_size),
             verbose=self.verbose,
         )
-        # Return loss metric that server expects
-        final_loss = history.history['loss'][-1]
-        return self.model.get_weights(), len(self.x_train), {"loss": final_loss}
 
-    def evaluate(self, parameters, config):
-        # Load weights
+        # 5) Return updated weights + num samples
+        return self.model.get_weights(), len(self.x_train), {}
+
+    def evaluate(
+        self, 
+        parameters: Any, 
+        config: Dict[str, Any]
+    ) -> Tuple[float, int, Dict[str, float]]:
+        # Same conversion dance
+        if not isinstance(parameters, list):
+            parameters = parameters_to_ndarrays(parameters)
         self.model.set_weights(parameters)
 
-        # Direct regression eval
-        loss, mae = self.model.evaluate(self.x_test, self.y_test, verbose=0)
-        return loss, len(self.x_test), {"loss": loss, "mae": mae}
+        loss, accuracy = self.model.evaluate(
+            self.x_test, 
+            self.y_test, 
+            verbose=self.verbose
+        )
+        return float(loss), len(self.x_test), {"accuracy": float(accuracy)}
 
 
 
