@@ -6,8 +6,8 @@ from flwr.common import Context
 from licfl.task import load_data, load_model
 
 # Debug: confirm we’re pulling in the right functions
-print(f"[client_app] load_data  from: {inspect.getsourcefile(load_data)}")
-print(f"[client_app] load_model from: {inspect.getsourcefile(load_model)}")
+# print(f"[client_app] load_data  from: {inspect.getsourcefile(load_data)}")
+# print(f"[client_app] load_model from: {inspect.getsourcefile(load_model)}")
 
 
 
@@ -39,8 +39,8 @@ class FlowerClient(flwr.client.NumPyClient):
             parameters = parameters_to_ndarrays(parameters)
 
         # 2) (Optional) debug shapes
-        print(">>> fit: incoming shapes:", [p.shape for p in parameters])
-        print(">>> fit: model needs shapes:", [w.shape for w in self.model.get_weights()])
+        # print(">>> fit: incoming shapes:", [p.shape for p in parameters])
+        # print(">>> fit: model needs shapes:", [w.shape for w in self.model.get_weights()])
 
         # 3) Load the global weights into our local model
         self.model.set_weights(parameters)
@@ -97,10 +97,10 @@ def client_fn(context: Context):
 
     # 3) Load data with debug prints
     try:
-        print(f"[client_fn] ➡ calling load_data(partition_id={partition_id}, num_partitions={num_partitions})")
+        # print(f"[client_fn] ➡ calling load_data(partition_id={partition_id}, num_partitions={num_partitions})")
         data = load_data(partition_id, num_partitions)
         X_tr, y_tr, X_te, y_te = data
-        print(f"[client_fn] ✅ shapes: X_tr={X_tr.shape}, y_tr={y_tr.shape}, X_te={X_te.shape}, y_te={y_te.shape}")
+        # print(f"[client_fn] ✅ shapes: X_tr={X_tr.shape}, y_tr={y_tr.shape}, X_te={X_te.shape}, y_te={y_te.shape}")
     except Exception:
         import traceback
         traceback.print_exc()
@@ -108,8 +108,8 @@ def client_fn(context: Context):
 
     # 4) Pull hyperparams (with sane defaults)
     epochs     = context.run_config.get("local-epochs", 1)
-    batch_size = context.run_config.get("batch-size",   32)
-    verbose    = context.run_config.get("verbose",      0)
+    batch_size = context.run_config.get("batch-size", 32)
+    verbose    = context.run_config.get("verbose", 0)
 
     # 5) Return the Flower client
     return FlowerClient(
