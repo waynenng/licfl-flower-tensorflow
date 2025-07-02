@@ -31,7 +31,7 @@ clientapp = "licfl.client_app:app"
 num-server-rounds = 10
 local-epochs = 3
 batch-size = 32
-verbose = true
+verbose = false
 
 [tool.flwr.federations]
 default = "local-simulation"
