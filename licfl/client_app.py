@@ -100,7 +100,7 @@ def client_fn(context: Context):
         # print(f"[client_fn] ➡ calling load_data(partition_id={partition_id}, num_partitions={num_partitions})")
         data = load_data(partition_id, num_partitions)
         X_tr, y_tr, X_te, y_te = data
-        # print(f"[client_fn] ✅ shapes: X_tr={X_tr.shape}, y_tr={y_tr.shape}, X_te={X_te.shape}, y_te={y_te.shape}")
+        # print(f"[client_fn] shapes: X_tr={X_tr.shape}, y_tr={y_tr.shape}, X_te={X_te.shape}, y_te={y_te.shape}")
     except Exception:
         import traceback
         traceback.print_exc()
