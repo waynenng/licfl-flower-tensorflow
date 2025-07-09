@@ -1,8 +1,6 @@
-"""LICFL: A Flower / TensorFlow app."""
-
 from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
-from flwr.server.strategy import FedAvg
+from flwr.server.strategy import FedYogi
 from licfl.task import load_model
 
 from typing import List, Tuple
@@ -12,7 +10,7 @@ from flwr.common import EvaluateRes
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
-class FedAvgWithMetrics(FedAvg):
+class FedYogiWithMetrics(FedYogi):
     def aggregate_evaluate(
         self,
         rnd: int,
@@ -49,7 +47,7 @@ def server_fn(context: Context):
     parameters = ndarrays_to_parameters(load_model().get_weights())
 
     # Define strategy
-    strategy = FedAvgWithMetrics(
+    strategy = FedYogiWithMetrics(
         fraction_fit=1.0,
         fraction_evaluate=1.0,
         min_available_clients=2,

@@ -1,4 +1,3 @@
-'''LICFL: A Flower / TensorFlow app.'''  
 import os
 import traceback
 import pathlib

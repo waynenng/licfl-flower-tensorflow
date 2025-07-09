@@ -1,5 +1,3 @@
-"""LICFL: A Flower / TensorFlow app."""
-
 import inspect
 from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context
@@ -8,8 +6,6 @@ from licfl.task import load_data, load_model
 # Debug: confirm we’re pulling in the right functions
 # print(f"[client_app] load_data  from: {inspect.getsourcefile(load_data)}")
 # print(f"[client_app] load_model from: {inspect.getsourcefile(load_model)}")
-
-
 
 from typing import Dict, Any, List, Tuple
 import numpy as np
