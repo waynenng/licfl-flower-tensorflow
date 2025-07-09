@@ -62,23 +62,29 @@ class FlowerClient(flwr.client.NumPyClient):
         parameters: Any,
         config: Dict[str, Any]
     ) -> Tuple[float, int, Dict[str, float]]:
-        # 1) Convert from Parameters proto if needed
         from flwr.common import parameters_to_ndarrays
+        from sklearn.metrics import mean_squared_error, r2_score
+
         if not isinstance(parameters, list):
             parameters = parameters_to_ndarrays(parameters)
 
-        # 2) Load the global weights into the local model
         self.model.set_weights(parameters)
 
-        # 3) Run evaluation; note we return MAE rather than “accuracy”
-        loss, mae = self.model.evaluate(
-            self.x_test,
-            self.y_test,
-            verbose=self.verbose
-        )
+        # Get loss and MAE from model's internal evaluation
+        loss, mae = self.model.evaluate(self.x_test, self.y_test, verbose=self.verbose)
 
-        # 4) Return (loss, num_samples, metrics)
-        return float(loss), len(self.x_test), {"mae": float(mae)}
+        # Predict and compute RMSE and R²
+        y_pred = self.model.predict(self.x_test, verbose=0).flatten()
+        y_true = self.y_test.flatten()
+
+        rmse = float(np.sqrt(mean_squared_error(y_true, y_pred)))
+        r2 = float(r2_score(y_true, y_pred))
+
+        return float(loss), len(self.x_test), {
+            "mae": float(mae),
+            "rmse": rmse,
+            "r2": r2
+        }
 
 
 
