@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Tuple
 import numpy as np
 import flwr
 from flwr.common import parameters_to_ndarrays  # for real runs
+from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error
 
 # Define Flower Client and client_fn
 class FlowerClient(flwr.client.NumPyClient):
@@ -58,8 +59,6 @@ class FlowerClient(flwr.client.NumPyClient):
         parameters: Any,
         config: Dict[str, Any]
     ) -> Tuple[float, int, Dict[str, float]]:
-        from flwr.common import parameters_to_ndarrays
-        from sklearn.metrics import mean_squared_error, r2_score
 
         if not isinstance(parameters, list):
             parameters = parameters_to_ndarrays(parameters)
@@ -69,17 +68,19 @@ class FlowerClient(flwr.client.NumPyClient):
         # Get loss and MAE from model's internal evaluation
         loss, mae = self.model.evaluate(self.x_test, self.y_test, verbose=self.verbose)
 
-        # Predict and compute RMSE and R²
+        # Predict and compute MSE, RMSE, and MAPE
         y_pred = self.model.predict(self.x_test, verbose=0).flatten()
         y_true = self.y_test.flatten()
 
-        rmse = float(np.sqrt(mean_squared_error(y_true, y_pred)))
-        r2 = float(r2_score(y_true, y_pred))
+        mse = float(mean_squared_error(y_true, y_pred))
+        rmse = float(np.sqrt(mse))
+        mape = float(mean_absolute_percentage_error(y_true, y_pred))
 
         return float(loss), len(self.x_test), {
             "mae": float(mae),
             "rmse": rmse,
-            "r2": r2
+            "mse": mse,
+            "mape": mape
         }
 
 

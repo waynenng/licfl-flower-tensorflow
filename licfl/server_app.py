@@ -7,7 +7,7 @@ from typing import List, Tuple
 import numpy as np
 
 from flwr.common import EvaluateRes
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 
 class FedYogiWithMetrics(FedYogi):
@@ -22,20 +22,22 @@ class FedYogiWithMetrics(FedYogi):
         loss_aggregated, _ = super().aggregate_evaluate(rnd, results, failures)
 
         # Collect all metrics
-        maes, rmses, r2s = [], [], []
+        maes, rmses, mses, mapes = [], [], [], []
 
         for _, eval_res in results:
             metrics = eval_res.metrics
             if metrics:
                 maes.append(metrics.get("mae"))
                 rmses.append(metrics.get("rmse"))
-                r2s.append(metrics.get("r2"))
+                mses.append(metrics.get("mse"))
+                mapes.append(metrics.get("mape"))
 
         # Compute average of each metric if available
         metrics_aggregated = {}
         if maes:  metrics_aggregated["mae"] = float(np.mean(maes))
         if rmses: metrics_aggregated["rmse"] = float(np.mean(rmses))
-        if r2s:   metrics_aggregated["r2"] = float(np.mean(r2s))
+        if mses:   metrics_aggregated["mse"]  = float(np.mean(mses))
+        if mapes:  metrics_aggregated["mape"] = float(np.mean(mapes))
 
         return loss_aggregated, metrics_aggregated
 
