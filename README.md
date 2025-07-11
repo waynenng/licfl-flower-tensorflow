@@ -1,4 +1,4 @@
-# A Comparative Analysis of Federated Learning Algorithms for Load Prediction in the Smart Grid
+# A Comparative Analysis of Four Federated Learning Algorithms on Load Prediction
 
 ## Install dependencies and project
 
