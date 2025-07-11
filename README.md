@@ -1,4 +1,4 @@
-# LICFL: A Flower / TensorFlow app
+# A Comparative Analysis of Federated Learning Algorithms for Load Prediction in the Smart Grid
 
 ## Install dependencies and project
 
