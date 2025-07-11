@@ -13,6 +13,10 @@ import flwr
 from flwr.common import parameters_to_ndarrays  # for real runs
 from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error
 
+import tensorflow as tf
+np.random.seed(42)
+tf.random.set_seed(42)
+
 # Define Flower Client and client_fn
 class FlowerClient(flwr.client.NumPyClient):
     def __init__(self, model, data, epochs, batch_size, verbose):
@@ -35,14 +39,10 @@ class FlowerClient(flwr.client.NumPyClient):
         if not isinstance(parameters, list):
             parameters = parameters_to_ndarrays(parameters)
 
-        # 2) (Optional) debug shapes
-        # print(">>> fit: incoming shapes:", [p.shape for p in parameters])
-        # print(">>> fit: model needs shapes:", [w.shape for w in self.model.get_weights()])
-
-        # 3) Load the global weights into our local model
+        # 2) Load the global weights into our local model
         self.model.set_weights(parameters)
 
-        # 4) Train
+        # 3) Train
         self.model.fit(
             self.x_train,
             self.y_train,
@@ -51,7 +51,7 @@ class FlowerClient(flwr.client.NumPyClient):
             verbose=self.verbose,
         )
 
-        # 5) Return updated weights + num samples
+        # 4) Return updated weights + num samples
         return self.model.get_weights(), len(self.x_train), {}
 
     def evaluate(
@@ -84,30 +84,17 @@ class FlowerClient(flwr.client.NumPyClient):
         }
 
 
-
 def client_fn(context: Context):
-    # 1) Load model, with full traceback on error
-    try:
-        net = load_model()
-    except Exception:
-        import traceback
-        traceback.print_exc()
-        raise
-
-    # 2) Determine partitioning params
+    # 1) Determine partitioning params
     partition_id = context.node_config.get("partition-id", 0)
     num_partitions = context.node_config.get("num-partitions", 1)
 
-    # 3) Load data with debug prints
-    try:
-        # print(f"[client_fn] ➡ calling load_data(partition_id={partition_id}, num_partitions={num_partitions})")
-        data = load_data(partition_id, num_partitions)
-        X_tr, y_tr, X_te, y_te = data
-        # print(f"[client_fn] shapes: X_tr={X_tr.shape}, y_tr={y_tr.shape}, X_te={X_te.shape}, y_te={y_te.shape}")
-    except Exception:
-        import traceback
-        traceback.print_exc()
-        raise
+    # 2) Load data first to determine input shape
+    X_tr, y_tr, X_te, y_te = load_data(partition_id, num_partitions)
+
+    # 3) Build the model with matching input dims
+    window_size, num_features = X_tr.shape[1], X_tr.shape[2]
+    net = load_model(window_size=window_size, num_features=num_features)
 
     # 4) Pull hyperparams (with sane defaults)
     epochs     = context.run_config.get("local-epochs", 1)
@@ -116,7 +103,11 @@ def client_fn(context: Context):
 
     # 5) Return the Flower client
     return FlowerClient(
-        net, data, epochs, batch_size, verbose
+        net,
+        (X_tr, y_tr, X_te, y_te),
+        epochs,
+        batch_size,
+        verbose
     ).to_client()
 
 
