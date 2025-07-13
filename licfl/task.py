@@ -30,6 +30,21 @@ WINDOW_SIZE = 96  # last 96 timesteps per sample
 # Columns containing date/time information to drop
 DATE_TIME_KEYWORDS = ("date", "time")
 
+EXCLUDED_REGIONS = {
+    "BUSOGFDG_COAST","BUSOGFDG_EAST","BUSOGFDG_FWEST","BUSOGFDG_NCENT",
+    "BUSOGFDG_NORTH","BUSOGFDG_SCENT","BUSOGFDG_SOUTH","BUSOGFDG_WEST",
+    "BUSOGFLT_COAST","BUSOGFLT_EAST","BUSOGFLT_FWEST","BUSOGFLT_NCENT",
+    "BUSOGFLT_NORTH","BUSOGFLT_SCENT","BUSOGFLT_SOUTH","BUSOGFLT_WEST",
+    "BUSOGFPV_COAST","BUSOGFPV_EAST","BUSOGFPV_FWEST","BUSOGFPV_NCENT",
+    "BUSOGFPV_NORTH","BUSOGFPV_SCENT","BUSOGFPV_SOUTH","BUSOGFPV_WEST",
+    "BUSOGFWD_COAST","BUSOGFWD_EAST","BUSOGFWD_FWEST","BUSOGFWD_NCENT",
+    "BUSOGFWD_NORTH","BUSOGFWD_SCENT","BUSOGFWD_SOUTH","BUSOGFWD_WEST",
+    "NMFLAT_COAST","NMFLAT_EAST","NMFLAT_FWEST","NMFLAT_NCENT",
+    "NMFLAT_NORTH","NMFLAT_SCENT","NMFLAT_SOUTH","NMFLAT_WEST",
+    "NMLIGHT_COAST","NMLIGHT_EAST","NMLIGHT_FWEST","NMLIGHT_NCENT",
+    "NMLIGHT_NORTH","NMLIGHT_SCENT","NMLIGHT_SOUTH","NMLIGHT_WEST",
+}
+
 # Cache for federated partitions
 data_cache = None  # type: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]
 
@@ -78,7 +93,7 @@ def load_model(window_size: int = WINDOW_SIZE, num_features: int = 1) -> Sequent
     return model
 
 def load_data(partition_id: int, num_partitions: int):
-    """Load, partition by region, and cache the ERCOT dataset for federated clients."""
+    
     global data_cache, region_cols_list
 
     if data_cache is None:
@@ -110,9 +125,13 @@ def load_data(partition_id: int, num_partitions: int):
 
         # 3) Identify region columns: numeric and not date/time
         region_cols = [
-            col for col in df.columns
-            if np.issubdtype(df[col].dtype, np.number)
-            and not any(kw in col.lower() for kw in DATE_TIME_KEYWORDS)
+            col
+            for col in df.columns
+            if (
+                np.issubdtype(df[col].dtype, np.number)
+                and not any(kw in col.lower() for kw in DATE_TIME_KEYWORDS)
+                and col not in EXCLUDED_REGIONS
+            )
         ]
         if num_partitions != len(region_cols):
             raise ValueError(

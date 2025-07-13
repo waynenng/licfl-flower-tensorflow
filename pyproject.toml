@@ -28,7 +28,7 @@ serverapp = "licfl.server_app:app"
 clientapp = "licfl.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 5
+num-server-rounds = 10
 local-epochs = 3
 batch-size = 32
 verbose = false
@@ -40,4 +40,4 @@ default = "local-simulation"
 include = ["licfl/data/*.feather"]
 
 [tool.flwr.federations.local-simulation]
-options.num-supernodes = 248
+options.num-supernodes = 200

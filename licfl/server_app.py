@@ -39,7 +39,7 @@ class FedYogiWithMetrics(FedYogi):
 
         return loss_aggregated, metrics_aggregated
 
-num_regions = 248
+num_regions = 200
 
 def server_fn(context: Context):
     num_rounds = context.run_config["num-server-rounds"]
@@ -59,15 +59,14 @@ def server_fn(context: Context):
         min_available_clients=num_regions,                
 
         # Learning Rates & Adaptivity 
-        eta=1e-3,           
-        eta_l=1e-2,         
-        beta_1=0.9,         
-        beta_2=0.99,        
-        tau=1e-3,           
+        eta=1e-4,           
+        eta_l=5e-4,         
+        beta_1=0.95,         
+        beta_2=0.9995,        
+        tau=1e-1,           
 
         # Dynamic Round Configs 
-        on_fit_config_fn=lambda rnd: {"local_epochs": 1 if rnd < 10 else 5},
-        on_evaluate_config_fn=lambda rnd: {"val_steps": 10 if rnd % 5 == 0 else 2},
+        on_fit_config_fn=lambda rnd: {"local_epochs": 3 if rnd < 5 else 5},
 
         # Starting Point 
         initial_parameters=parameters,
