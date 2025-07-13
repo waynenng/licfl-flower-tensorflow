@@ -2,7 +2,6 @@ from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedYogi
 from licfl.task import load_model
-from math import ceil
 from typing import List, Tuple
 import numpy as np
 from flwr.common import Metrics
@@ -49,11 +48,12 @@ def server_fn(context: Context):
 
     # Define strategy
     strategy = FedYogiWithMetrics(
+
         # Client Sampling
-        fraction_fit=0.15,                                
-        min_fit_clients=max(2, ceil(0.15 * num_regions)), 
-        fraction_evaluate=0.05,                           
-        min_evaluate_clients=max(2, ceil(0.05 * num_regions)),  
+        fraction_fit=1.0,                                
+        min_fit_clients=num_regions, 
+        fraction_evaluate=1.0,
+        min_evaluate_clients=num_regions,  
 
         # Availability 
         min_available_clients=num_regions,                
@@ -64,9 +64,6 @@ def server_fn(context: Context):
         beta_1=0.95,         
         beta_2=0.9995,        
         tau=1e-1,           
-
-        # Dynamic Round Configs 
-        on_fit_config_fn=lambda rnd: {"local_epochs": 3 if rnd < 5 else 5},
 
         # Starting Point 
         initial_parameters=parameters,
