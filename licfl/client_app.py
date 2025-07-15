@@ -95,8 +95,8 @@ def client_fn(context: Context):
     net = load_model(window_size=window_size, num_features=num_features)
 
     # 4) Pull hyperparams (with sane defaults)
-    epochs     = context.run_config.get("local-epochs", 3)
-    batch_size = context.run_config.get("batch-size", 32)
+    epochs     = context.run_config.get("local-epochs", 1)
+    batch_size = context.run_config.get("batch-size", 16)
     verbose    = context.run_config.get("verbose", 0)
 
     # 5) Return the Flower client
