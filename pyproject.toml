@@ -28,7 +28,7 @@ serverapp = "licfl.server_app:app"
 clientapp = "licfl.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 4
+num-server-rounds = 3
 local-epochs = 3
 batch-size = 32
 verbose = false
