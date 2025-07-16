@@ -1,5 +1,4 @@
-import inspect
-from flwr.client import NumPyClient, ClientApp
+from flwr.client import ClientApp
 from flwr.common import Context
 from licfl.task import load_data, load_model
 
@@ -11,7 +10,7 @@ from typing import Dict, Any, List, Tuple
 import numpy as np
 import flwr
 from flwr.common import parameters_to_ndarrays  # for real runs
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error
 
 import tensorflow as tf
 np.random.seed(42)
@@ -74,13 +73,14 @@ class FlowerClient(flwr.client.NumPyClient):
 
         mse = float(mean_squared_error(y_true, y_pred))
         rmse = float(np.sqrt(mse))
+        mape = float(mean_absolute_percentage_error(y_true, y_pred)) * 100
 
         return float(loss), len(self.x_test), {
             "mae": float(mae),
             "rmse": rmse,
             "mse": mse,
+            "mape": mape,
         }
-
 
 def client_fn(context: Context):
     # 1) Determine partitioning params
@@ -95,8 +95,8 @@ def client_fn(context: Context):
     net = load_model(window_size=window_size, num_features=num_features)
 
     # 4) Pull hyperparams (with sane defaults)
-    epochs     = context.run_config.get("local-epochs", 1)
-    batch_size = context.run_config.get("batch-size", 16)
+    epochs     = context.run_config.get("local-epochs", 3)
+    batch_size = context.run_config.get("batch-size", 64)
     verbose    = context.run_config.get("verbose", 0)
 
     # 5) Return the Flower client
