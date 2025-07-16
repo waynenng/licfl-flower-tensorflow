@@ -4,10 +4,7 @@ from flwr.server.strategy import FedYogi
 from licfl.task import load_model
 from typing import List, Tuple
 import numpy as np
-from flwr.common import Metrics
 from flwr.common import EvaluateRes
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-
 
 class FedYogiWithMetrics(FedYogi):
     def aggregate_evaluate(
@@ -21,7 +18,7 @@ class FedYogiWithMetrics(FedYogi):
         loss_aggregated, _ = super().aggregate_evaluate(rnd, results, failures)
 
         # Collect all metrics
-        maes, rmses, mses = [], [], []
+        maes, rmses, mses, mapes = [], [], [], []
 
         for _, eval_res in results:
             metrics = eval_res.metrics
@@ -29,16 +26,18 @@ class FedYogiWithMetrics(FedYogi):
                 maes.append(metrics.get("mae"))
                 rmses.append(metrics.get("rmse"))
                 mses.append(metrics.get("mse"))
+                mapes.append(metrics.get("mape"))
 
         # Compute average of each metric if available
         metrics_aggregated = {}
-        if maes:  metrics_aggregated["mae"] = float(np.mean(maes))
+        if maes: metrics_aggregated["mae"] = float(np.mean(maes))
         if rmses: metrics_aggregated["rmse"] = float(np.mean(rmses))
-        if mses:   metrics_aggregated["mse"]  = float(np.mean(mses))
+        if mses: metrics_aggregated["mse"]  = float(np.mean(mses))
+        if mapes: metrics_aggregated["mape"] = float(np.mean(mapes))
 
         return loss_aggregated, metrics_aggregated
 
-num_regions = 100
+num_regions = 50
 
 def server_fn(context: Context):
     num_rounds = context.run_config["num-server-rounds"]
@@ -59,10 +58,10 @@ def server_fn(context: Context):
         min_available_clients=num_regions,                
 
         # Learning Rates & Adaptivity 
-        eta=1e-4,           
-        eta_l=5e-4,         
-        beta_1=0.95,         
-        beta_2=0.9995,        
+        eta=1e-5,           
+        eta_l=5e-5,         
+        beta_1=0.75,         
+        beta_2=0.9999,        
         tau=1e-1,           
 
         # Starting Point 
