@@ -1,7 +1,7 @@
 import os
 import traceback
 import pathlib
-
+from tensorflow.keras import Input
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -19,9 +19,6 @@ from tensorflow.keras.layers import (
 # Make TensorFlow log less verbose
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-# Global caches to avoid re-loading
-# data_cache: list of (X_tr, y_tr, X_te, y_te) per region
-# region_cols_list: names of regions corresponding to data_cache indices
 data_cache = None
 region_cols_list = None
 
@@ -31,6 +28,8 @@ WINDOW_SIZE = 96  # last 96 timesteps per sample
 DATE_TIME_KEYWORDS = ("date", "time")
 
 EXCLUDED_REGIONS = {
+
+    # excluded these 48 regions for being outliers     
     "BUSOGFDG_COAST","BUSOGFDG_EAST","BUSOGFDG_FWEST","BUSOGFDG_NCENT",
     "BUSOGFDG_NORTH","BUSOGFDG_SCENT","BUSOGFDG_SOUTH","BUSOGFDG_WEST",
     "BUSOGFLT_COAST","BUSOGFLT_EAST","BUSOGFLT_FWEST","BUSOGFLT_NCENT",
@@ -43,21 +42,40 @@ EXCLUDED_REGIONS = {
     "NMFLAT_NORTH","NMFLAT_SCENT","NMFLAT_SOUTH","NMFLAT_WEST",
     "NMLIGHT_COAST","NMLIGHT_EAST","NMLIGHT_FWEST","NMLIGHT_NCENT",
     "NMLIGHT_NORTH","NMLIGHT_SCENT","NMLIGHT_SOUTH","NMLIGHT_WEST",
+
+    # excluded these 100 regions simply due to machine application memory constraints 
+    "BUSHIDG_COAST", "BUSHIDG_EAST", "BUSHIDG_FWEST", "BUSHIDG_NCENT", "BUSHIDG_NORTH",
+    "BUSHIDG_SCENT", "BUSHIDG_SOUTH", "BUSHIDG_WEST", "BUSHILF_COAST", "BUSHILF_EAST",
+    "BUSHILF_FWEST", "BUSHILF_NCENT", "BUSHILF_NORTH", "BUSHILF_SCENT", "BUSHILF_SOUTH",
+    "BUSHILF_WEST", "BUSHIPV_COAST", "BUSHIPV_EAST", "BUSHIPV_FWEST", "BUSHIPV_NCENT",
+    "BUSHIPV_NORTH", "BUSHIPV_SCENT", "BUSHIPV_SOUTH", "BUSHIPV_WEST", "BUSHIWD_COAST",
+    "BUSHIWD_EAST", "BUSHIWD_FWEST", "BUSHIWD_NCENT", "BUSHIWD_NORTH", "BUSHIWD_SCENT",
+    "BUSHIWD_SOUTH", "BUSHIWD_WEST", "BUSIDRRQ_COAST", "BUSIDRRQ_EAST", "BUSIDRRQ_FWEST", 
+    "BUSIDRRQ_NCENT", "BUSIDRRQ_NORTH", "BUSIDRRQ_SCENT", "BUSIDRRQ_SOUTH", "BUSIDRRQ_WEST", 
+    "BUSLODG_COAST", "BUSLODG_EAST", "BUSLODG_FWEST", "BUSLODG_NCENT", "BUSLODG_NORTH",
+    "BUSLODG_SCENT", "BUSLODG_WEST", "BUSLOLF_COAST", "BUSLOLF_EAST", "BUSLOLF_FWEST", 
+    "BUSLOLF_NCENT", "BUSLOLF_NORTH", "BUSLOLF_SCENT", "BUSLOLF_WEST", "BUSLOPV_COAST", 
+    "BUSLOPV_EAST", "BUSLOPV_FWEST", "BUSLOPV_NCENT", "BUSLOPV_NORTH", "BUSLOPV_SCENT", 
+    "BUSLOPV_SOUTH", "BUSLOPV_WEST", "BUSLOWD_COAST", "BUSLOWD_EAST", "BUSLOWD_FWEST",
+    "BUSLOWD_NCENT", "BUSLOWD_SCENT", "BUSLOWD_WEST", "BUSMEDDG_COAST", "BUSMEDDG_EAST",
+    "BUSMEDDG_FWEST", "BUSMEDDG_NCENT", "BUSMEDDG_NORTH", "BUSMEDDG_SCENT", "BUSMEDDG_SOUTH", 
+    "BUSMEDDG_WEST", "BUSMEDLF_COAST", "BUSMEDLF_EAST", "BUSMEDLF_FWEST", "BUSMEDLF_NCENT",
+    "BUSMEDLF_NORTH", "BUSMEDLF_SCENT", "BUSMEDLF_SOUTH", "BUSMEDLF_WEST", "BUSMEDPV_COAST", 
+    "BUSMEDPV_EAST", "BUSMEDPV_FWEST", "BUSMEDPV_NCENT", "BUSMEDPV_NORTH", "BUSMEDPV_SCENT", 
+    "BUSMEDPV_SOUTH", "BUSMEDPV_WEST", "BUSMEDWD_COAST", "BUSMEDWD_EAST", "BUSMEDWD_FWEST", 
+    "BUSMEDWD_NCENT", "BUSMEDWD_NORTH", "BUSMEDWD_SCENT", "BUSMEDWD_SOUTH", "BUSMEDWD_WEST",
 }
 
-# Cache for federated partitions
-data_cache = None  # type: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]
-
-
 def load_model(window_size: int = WINDOW_SIZE, num_features: int = 1) -> Sequential:
+    
     model = Sequential()
+    model.add(Input(shape=(window_size, num_features)))
 
     # 1) Temporal (LSTM) stack
     model.add(
         LSTM(
             100,
             activation="tanh",
-            input_shape=(window_size, num_features),
             return_sequences=True,
         )
     )

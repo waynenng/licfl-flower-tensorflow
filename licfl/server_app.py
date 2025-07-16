@@ -38,7 +38,7 @@ class FedYogiWithMetrics(FedYogi):
 
         return loss_aggregated, metrics_aggregated
 
-num_regions = 200
+num_regions = 100
 
 def server_fn(context: Context):
     num_rounds = context.run_config["num-server-rounds"]
