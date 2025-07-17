@@ -48,7 +48,7 @@ def server_fn(context: Context):
     # Define strategy
     strategy = FedYogiWithMetrics(
 
-        # Client Sampling
+        # Client sampling
         fraction_fit=1.0,                                
         min_fit_clients=num_regions, 
         fraction_evaluate=1.0,
@@ -57,14 +57,14 @@ def server_fn(context: Context):
         # Availability 
         min_available_clients=num_regions,                
 
-        # Learning Rates & Adaptivity 
+        # Learning rates and adaptivity 
         eta=1e-5,           
         eta_l=5e-5,         
         beta_1=0.75,         
         beta_2=0.9999,        
         tau=1e-1,           
 
-        # Starting Point 
+        # Starting point 
         initial_parameters=parameters,
     )
 

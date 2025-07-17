@@ -136,7 +136,8 @@ def load_data(partition_id: int, num_partitions: int):
     global data_cache, region_cols_list
 
     if data_cache is None:
-        # 1) Locate the Feather file, with env override
+        
+        # Locate the Feather file, with env override
         pkg_data = pathlib.Path(__file__).parent / "data" / "ercot-2021-load_profiles.feather"
         proj_data = pathlib.Path.cwd() / "data" / "ercot-2021-load_profiles.feather"
         root_file = pathlib.Path(__file__).parent.parent / "ercot-2021-load_profiles.feather"
@@ -155,14 +156,14 @@ def load_data(partition_id: int, num_partitions: int):
                 + ", ".join(str(c) for c in candidates)
             )
 
-        # 2) Read into DataFrame
+        # Read into DataFrame
         try:
             df = pd.read_feather(data_path)
         except Exception:
             traceback.print_exc()
             raise
 
-        # 3) Identify region columns: numeric and not date/time
+        # Identify region columns: numeric and not date/time
         region_cols = [
             col
             for col in df.columns
@@ -181,7 +182,7 @@ def load_data(partition_id: int, num_partitions: int):
         region_cols_list = region_cols
         data_cache = []
 
-        # 4) Build sliding windows and time-split per region
+        # Build sliding windows and time-split per region
         for region in region_cols_list:
             series = df[region].values
             X_windows, y_windows = [], []
