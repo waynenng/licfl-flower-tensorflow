@@ -1,6 +1,8 @@
 import os
 import traceback
 import pathlib
+from pathlib import Path
+from sklearn.preprocessing import StandardScaler
 from tensorflow.keras import Input
 import pandas as pd
 import numpy as np
@@ -20,6 +22,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 data_cache = None
 region_cols_list = None
+region_scalers = None
 
 WINDOW_SIZE = 96  # last 96 timesteps per sample
 
@@ -92,7 +95,7 @@ def load_model(window_size: int = WINDOW_SIZE, num_features: int = 1) -> Sequent
     model = Sequential()
     model.add(Input(shape=(window_size, num_features)))
 
-    # 1) Temporal (LSTM) stack
+    # Temporal (LSTM) stack
     model.add(
         LSTM(
             100,
@@ -108,8 +111,8 @@ def load_model(window_size: int = WINDOW_SIZE, num_features: int = 1) -> Sequent
         )
     )
 
-    # 2) Spatial pattern extraction with 1D convolutions
-    #    Conv along the time axis on the 100-dimensional features
+    # Spatial pattern extraction with 1D convolutions
+    # Conv along the time axis on the 100-dimensional features
     model.add(Conv1D(64, kernel_size=3, padding="same", activation="relu"))
     model.add(BatchNormalization())
     model.add(MaxPooling1D(pool_size=2))
@@ -118,11 +121,11 @@ def load_model(window_size: int = WINDOW_SIZE, num_features: int = 1) -> Sequent
     model.add(BatchNormalization())
     model.add(MaxPooling1D(pool_size=2))
 
-    # 3) Global pooling to reduce parameters
+    # Global pooling to reduce parameters
     model.add(GlobalAveragePooling1D())
     model.add(Dropout(0.2))
 
-    # 4) Dense head with light regularization
+    # Dense head with light regularization
     model.add(Dense(32, activation="relu"))
     model.add(Dropout(0.2))
     model.add(Dense(16, activation="relu"))
@@ -133,22 +136,21 @@ def load_model(window_size: int = WINDOW_SIZE, num_features: int = 1) -> Sequent
 
 def load_data(partition_id: int, num_partitions: int):
     
-    global data_cache, region_cols_list
+    global data_cache, region_cols_list, region_scalers
 
     if data_cache is None:
-        
         # Locate the Feather file, with env override
-        pkg_data = pathlib.Path(__file__).parent / "data" / "ercot-2021-load_profiles.feather"
-        proj_data = pathlib.Path.cwd() / "data" / "ercot-2021-load_profiles.feather"
-        root_file = pathlib.Path(__file__).parent.parent / "ercot-2021-load_profiles.feather"
+        pkg_data  = Path(__file__).parent / "data" / "ercot-2021-load_profiles.feather"
+        proj_data = Path.cwd() / "data" / "ercot-2021-load_profiles.feather"
+        root_file = Path(__file__).parent.parent / "ercot-2021-load_profiles.feather"
 
         env_path = os.getenv("ERCOT_DATA_PATH")
-        candidates = [pathlib.Path(env_path)] if env_path else [pkg_data, proj_data, root_file]
+        candidates = [Path(env_path)] if env_path else [pkg_data, proj_data, root_file]
 
         data_path = None
-        for candidate in candidates:
-            if candidate and candidate.exists():
-                data_path = candidate
+        for cand in candidates:
+            if cand and cand.exists():
+                data_path = cand
                 break
         if data_path is None:
             raise FileNotFoundError(
@@ -165,8 +167,7 @@ def load_data(partition_id: int, num_partitions: int):
 
         # Identify region columns: numeric and not date/time
         region_cols = [
-            col
-            for col in df.columns
+            col for col in df.columns
             if (
                 np.issubdtype(df[col].dtype, np.number)
                 and not any(kw in col.lower() for kw in DATE_TIME_KEYWORDS)
@@ -181,28 +182,44 @@ def load_data(partition_id: int, num_partitions: int):
         # Initialize caches
         region_cols_list = region_cols
         data_cache = []
+        region_scalers = {}
 
-        # Build sliding windows and time-split per region
+        # Standardize and build windows per region
         for region in region_cols_list:
-            series = df[region].values
-            X_windows, y_windows = [], []
-            for i in range(len(series) - WINDOW_SIZE):
-                X_windows.append(series[i:i + WINDOW_SIZE])
-                y_windows.append(series[i + WINDOW_SIZE])
-            X_arr = np.array(X_windows)[..., np.newaxis]
-            y_arr = np.array(y_windows)
+            raw = df[region].values.reshape(-1, 1)
+            split_idx = int(len(raw) * 0.8)
+            train_raw = raw[:split_idx]
+            test_raw  = raw[split_idx:]
 
-            split_idx = int(len(X_arr) * 0.8)
-            X_tr, X_te = X_arr[:split_idx], X_arr[split_idx:]
-            y_tr, y_te = y_arr[:split_idx], y_arr[split_idx:]
+            # Fit scaler on train, transform both
+            scaler = StandardScaler()
+            train_scaled = scaler.fit_transform(train_raw).flatten()
+            test_scaled  = scaler.transform(test_raw).flatten()
 
-            data_cache.append((X_tr, y_tr, X_te, y_te))
+            # Build sliding windows on scaled data
+            X_tr, y_tr = [], []
+            for i in range(len(train_scaled) - WINDOW_SIZE):
+                X_tr.append(train_scaled[i : i + WINDOW_SIZE])
+                y_tr.append(train_scaled[i + WINDOW_SIZE])
+            X_te, y_te = [], []
+            for i in range(len(test_scaled) - WINDOW_SIZE):
+                X_te.append(test_scaled[i : i + WINDOW_SIZE])
+                y_te.append(test_scaled[i + WINDOW_SIZE])
 
-    # Retrieve partition data and region name
-    X_train, y_train, X_test, y_test = data_cache[partition_id]
-    region_name = region_cols_list[partition_id]
+            X_tr = np.array(X_tr)[..., np.newaxis]
+            y_tr = np.array(y_tr)
+            X_te = np.array(X_te)[..., np.newaxis]
+            y_te = np.array(y_te)
+
+            # Cache windows and scaler
+            data_cache.append((X_tr, y_tr, X_te, y_te, scaler))
+            region_scalers[region] = scaler
+
+    # Retrieve requested partition
+    X_train, y_train, X_test, y_test, scaler = data_cache[partition_id]
+    region = region_cols_list[partition_id]
     print(
         f"[load_data] Client {partition_id+1}/{num_partitions} "
-        f"(region: {region_name}) | train={X_train.shape}, test={X_test.shape}"
+        f"(region: {region}) | train={X_train.shape}, test={X_test.shape}"
     )
-    return X_train, y_train, X_test, y_test
+    return X_train, y_train, X_test, y_test, scaler
