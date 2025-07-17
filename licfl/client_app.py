@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Tuple
 import numpy as np
 import flwr
 from flwr.common import parameters_to_ndarrays  # for real runs
-from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error
+from sklearn.metrics import mean_squared_error
 
 import tensorflow as tf
 np.random.seed(42)
@@ -73,13 +73,18 @@ class FlowerClient(flwr.client.NumPyClient):
 
         mse = float(mean_squared_error(y_true, y_pred))
         rmse = float(np.sqrt(mse))
-        mape = float(mean_absolute_percentage_error(y_true, y_pred)) * 100
+        smape = float(
+            100 * np.mean(
+                np.abs(y_pred - y_true) /
+                ((np.abs(y_true) + np.abs(y_pred)) / 2 + 1e-8)
+            )
+        )
 
         return float(loss), len(self.x_test), {
             "mae": float(mae),
             "rmse": rmse,
             "mse": mse,
-            "mape": mape,
+            "smape": smape,
         }
 
 def client_fn(context: Context):

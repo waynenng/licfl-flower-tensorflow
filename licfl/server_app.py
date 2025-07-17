@@ -18,7 +18,7 @@ class FedYogiWithMetrics(FedYogi):
         loss_aggregated, _ = super().aggregate_evaluate(rnd, results, failures)
 
         # Collect all metrics
-        maes, rmses, mses, mapes = [], [], [], []
+        maes, rmses, mses, smapes = [], [], [], []
 
         for _, eval_res in results:
             metrics = eval_res.metrics
@@ -26,14 +26,14 @@ class FedYogiWithMetrics(FedYogi):
                 maes.append(metrics.get("mae"))
                 rmses.append(metrics.get("rmse"))
                 mses.append(metrics.get("mse"))
-                mapes.append(metrics.get("mape"))
+                smapes.append(metrics.get("smape"))
 
         # Compute average of each metric if available
         metrics_aggregated = {}
         if maes: metrics_aggregated["mae"] = float(np.mean(maes))
         if rmses: metrics_aggregated["rmse"] = float(np.mean(rmses))
         if mses: metrics_aggregated["mse"]  = float(np.mean(mses))
-        if mapes: metrics_aggregated["mape"] = float(np.mean(mapes))
+        if smapes: metrics_aggregated["smape"] = float(np.mean(smapes))
 
         return loss_aggregated, metrics_aggregated
 
