@@ -202,6 +202,6 @@ def load_data(partition_id: int, num_partitions: int):
     region_name = region_cols_list[partition_id]
     print(
         f"[load_data] Client {partition_id+1}/{num_partitions} "
-        f"(region: {region_name}) → train={X_train.shape}, test={X_test.shape}"
+        f"(region: {region_name}) | train={X_train.shape}, test={X_test.shape}"
     )
     return X_train, y_train, X_test, y_test
