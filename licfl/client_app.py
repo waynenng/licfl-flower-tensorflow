@@ -30,14 +30,14 @@ class FlowerClient(flwr.client.NumPyClient):
         parameters: Any, 
         config: Dict[str, Any]
     ) -> Tuple[List[np.ndarray], int, Dict[str, float]]:
-        # 1) Convert if Flower passed a Parameters proto
+        # Convert if Flower passed a Parameters proto
         if not isinstance(parameters, list):
             parameters = parameters_to_ndarrays(parameters)
 
-        # 2) Load the global weights into our local model
+        # Load the global weights into our local model
         self.model.set_weights(parameters)
 
-        # 3) Train
+        # Train
         self.model.fit(
             self.x_train,
             self.y_train,
@@ -46,7 +46,7 @@ class FlowerClient(flwr.client.NumPyClient):
             verbose=self.verbose,
         )
 
-        # 4) Return updated weights + num samples
+        # Return updated weights + num samples
         return self.model.get_weights(), len(self.x_train), {}
 
     def evaluate(
@@ -62,12 +62,12 @@ class FlowerClient(flwr.client.NumPyClient):
         # Load the global weights into our model
         self.model.set_weights(parameters)
 
-        # 3) Evaluate loss and MAE on the scaled test data
+        # Evaluate loss and MAE on the scaled test data
         loss_scaled, mae_scaled = self.model.evaluate(
             self.x_test, self.y_test, verbose=self.verbose
         )
 
-        # 4) Predict on the scaled test inputs
+        # Predict on the scaled test inputs
         y_pred_scaled = self.model.predict(self.x_test, verbose=0).flatten()
         y_true_scaled = self.y_test.flatten()
 
