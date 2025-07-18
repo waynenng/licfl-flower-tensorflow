@@ -1,12 +1,12 @@
 from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
-from flwr.server.strategy import FedYogi
+from flwr.server.strategy import FedAdagrad
 from licfl.task import load_model
 from typing import List, Tuple
 import numpy as np
 from flwr.common import EvaluateRes
 
-class FedYogiWithMetrics(FedYogi):
+class FedAdagradWithMetrics(FedAdagrad):
     def aggregate_evaluate(
         self,
         rnd: int,
@@ -46,7 +46,7 @@ def server_fn(context: Context):
     parameters = ndarrays_to_parameters(load_model().get_weights())
 
     # Define strategy
-    strategy = FedYogiWithMetrics(
+    strategy = FedAdagradWithMetrics(
 
         # Client sampling
         fraction_fit=1.0,                                
@@ -59,9 +59,7 @@ def server_fn(context: Context):
 
         # Learning rates and adaptivity 
         eta=1e-5,           
-        eta_l=5e-5,         
-        beta_1=0.75,         
-        beta_2=0.9999,        
+        eta_l=5e-5,       
         tau=1e-1,           
 
         # Starting point 
