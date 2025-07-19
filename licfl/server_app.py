@@ -1,12 +1,12 @@
 from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
-from flwr.server.strategy import FedYogi
+from flwr.server.strategy import FedAdam
 from licfl.task import load_model
 from typing import List, Tuple
 import numpy as np
 from flwr.common import EvaluateRes
 
-class FedYogiWithMetrics(FedYogi):
+class FedAdamWithMetrics(FedAdam):
     def aggregate_evaluate(
         self,
         rnd: int,
@@ -46,7 +46,7 @@ def server_fn(context: Context):
     parameters = ndarrays_to_parameters(load_model().get_weights())
 
     # Define strategy
-    strategy = FedYogiWithMetrics(
+    strategy = FedAdamWithMetrics(
 
         # Client sampling
         fraction_fit=1.0,                                
